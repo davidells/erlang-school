@@ -1,5 +1,5 @@
 -module(ch3).
--export([sum/1, sum/2, create/1, create_reverse/1, print/1, print_even/1, db_new/0, db_destroy/1, db_write/3, db_delete/2, db_read/2, db_match/2, filter/2, reverse/1, concatenate/1, flatten/1, flatten/2, quicksort/1, mergesort/1, db2_new/0, db2_destroy/1, db2_write/3, db2_delete/2, db2_read/2, db2_match/2, parse/1, eval/1, pretty_print/1, compile/1, simulate/1]).
+-export([sum/1, sum/2, create/1, create_reverse/1, print/1, print_even/1, db_new/0, db_destroy/1, db_write/3, db_delete/2, db_read/2, db_match/2, filter/2, reverse/1, concatenate/1, flatten/1, flatten/2, quicksort/1, mergesort/1, db2_new/0, db2_destroy/1, db2_write/3, db2_delete/2, db2_read/2, db2_match/2, parse/1, eval/1, pretty_print/1, compile/1, simulate/1, index_listing/1]).
 
 % 3.1
 
@@ -296,4 +296,59 @@ simulate([Number | Instructions], Stack) ->
 
 
 
+% 3.9
+
+index_listing([]) ->
+    io:format("~n");
+
+index_listing([{Keyword, OccurrenceList}|Tail]) ->
+    IndexForm = index_form(OccurrenceList),
+    io:format("~s\t\t~s~n", [Keyword, index_str(IndexForm)]),
+    index_listing(Tail).
+
+
+% Helper function: turns [1,1,2,4,5,6,8] -> [{1,2},{4,6},{8,8}]
+
+index_form([]) -> [];
+
+index_form([Head|Tail]) ->
+    index_form(Tail, Head, Head, []).
+
+index_form([], CurrentStart, CurrentEnd, Acc) ->
+    lists:reverse([{CurrentStart, CurrentEnd} | Acc]);
+
+index_form([Head|Tail], CurrentStart, CurrentEnd, Acc) 
+  when Head =:= CurrentStart; 
+       Head =:= CurrentEnd ->
+    index_form(Tail, CurrentStart, CurrentEnd, Acc);
+
+index_form([Head|Tail], CurrentStart, CurrentEnd, Acc) 
+  when Head =:= (CurrentEnd + 1) ->
+    index_form(Tail, CurrentStart, Head, Acc);
+
+index_form([Head|Tail], CurrentStart, CurrentEnd, Acc) ->
+    index_form(Tail, Head, Head, [{CurrentStart, CurrentEnd} | Acc]).
+
+
+% Helper function: turns [{1,2},{4,6},{8,8}] -> "1-2,4-6,8"
+
+index_str(IndexForm) ->
+    index_str(lists:reverse(IndexForm), []).
+
+index_str([], Acc) -> 
+    Acc;
+
+index_str([{Start,End}|Tail], Acc) ->
+    RangeStr = 
+        case Start =:= End of
+            true -> integer_to_list(Start);
+            false -> integer_to_list(Start) ++ "-" ++ integer_to_list(End)
+        end,
+    CommaStr = 
+        case Acc =:= [] of
+            true -> "";
+            false -> ","
+        end,
+    index_str(Tail, RangeStr ++ CommaStr ++ Acc).
+    
 
