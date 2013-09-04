@@ -1,14 +1,11 @@
 -module(ch5).
--export([my_db_start/0, my_db_stop/0, my_db_fetch/0, my_db_write/2, my_db_delete/1, my_db_read/1, my_db_match/1, freq_start/0, freq_stop/0, freq_allocate/0, freq_deallocate/1]).
+-export([my_db_start/0, my_db_stop/0, my_db_debug/0, my_db_fetch/0, my_db_write/2, my_db_delete/1, my_db_read/1, my_db_match/1, freq_start/0, freq_stop/0, freq_debug/0, freq_allocate/0, freq_deallocate/1]).
 -export([loop/2]).
 
 % 5.1
 
 % Process skeleton
 
-stop(Name) ->
-    Name ! {stop, self()},
-    receive {reply, Reply} -> Reply end.
      
 loop(Handler, State) ->
     receive
@@ -16,6 +13,9 @@ loop(Handler, State) ->
             {Reply, NewState} = Handler(Msg, State),
             reply(From, Reply),
             loop(Handler, NewState);
+        {debug, From} ->
+            reply(From, State),
+            loop(Handler, State);
         {stop, From} ->
             reply(From, ok)
     end.
@@ -27,6 +27,14 @@ request(Name, Message) ->
 reply(To, Reply) ->
     To ! {reply, Reply}.
 
+stop(Name) ->
+    Name ! {stop, self()},
+    receive {reply, Reply} -> Reply end.
+
+debug(Name) ->
+    Name ! {debug, self()},
+    receive {reply, Reply} -> Reply end.
+             
 
 % my_db client
 
@@ -37,6 +45,9 @@ my_db_start() ->
 
 my_db_stop() ->
     stop(my_db).
+
+my_db_debug() ->
+    debug(my_db).
 
 my_db_fetch() ->
     request(my_db, fetch).
@@ -84,27 +95,41 @@ freq_start() ->
     ok.
 
 freq_stop() ->
-    stop(frequency).
+    request(frequency, {stop, self()}).
+
+freq_debug() ->
+    debug(frequency).
 
 freq_allocate() ->
     request(frequency, {allocate, self()}).
 
 freq_deallocate(Freq) ->
-    request(frequency, {deallocate, Freq}).
+    request(frequency, {deallocate, self(), Freq}).
 
 
 % frequencies server
 
+freq_handle({stop, _Pid}, {Free, []}) ->
+    self() ! {stop, self()},
+    {ok, {Free, []}};
+
+freq_handle({stop, _Pid}, State) ->
+    {{error, frequencies_allocated}, State};
+
+    
 freq_handle({allocate, _Pid}, {[], Allocated}) ->
     {{error, no_frequency}, {[], Allocated}};
 
 freq_handle({allocate, Pid}, {[Freq|Free], Allocated}) ->
-    {{ok, Freq}, {Free, [{Freq, Pid}|Allocated]}};
+    AllocatedByRequestingPid = fun({_F,P}) -> P =:= Pid end,
+    case length(lists:filter(AllocatedByRequestingPid, Allocated)) of
+        L when L < 3 -> {{ok, Freq}, {Free, [{Freq, Pid}|Allocated]}};
+        L when L >= 3 -> {{error, allocation_limit}, {[Freq|Free], Allocated}}
+    end;
 
-freq_handle({deallocate, Freq, Pid}, {Free, Allocated}) ->
-    %{ok, {[Freq|Free], lists:keydelete(Freq, 1, Allocated)}}.
-    {ok, {[Freq|Free], 
-          lists:filter(
-            fun({F,P}) -> F =/= Freq orelse P =/= Pid end,
-            Allocated)}}.
-                       
+
+freq_handle({deallocate, Pid, Freq}, {Free, Allocated}) ->
+    case lists:member({Freq,Pid}, Allocated) of
+        true -> {ok, {[Freq|Free], lists:delete({Freq,Pid}, Allocated)}};
+        false -> {{error, bad_frequency}, {Free, Allocated}}
+    end.
