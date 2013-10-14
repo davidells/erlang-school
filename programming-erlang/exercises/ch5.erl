@@ -1,6 +1,10 @@
 -module(ch5).
--export([my_db_start/0, my_db_stop/0, my_db_debug/0, my_db_fetch/0, my_db_write/2, my_db_delete/1, my_db_read/1, my_db_match/1, freq_start/0, freq_stop/0, freq_debug/0, freq_allocate/0, freq_deallocate/1]).
--export([loop/2]).
+-export([my_db_start/0, my_db_stop/0, my_db_debug/0, my_db_fetch/0, 
+         my_db_write/2, my_db_delete/1, my_db_read/1, my_db_match/1, 
+         freq_start/0, freq_stop/0, freq_debug/0, freq_allocate/0, freq_deallocate/1,
+         em_start/2, em_stop/1, em_add_handler/3, em_delete_handler/2,
+         em_swap_handlers/3, em_get_data/2, em_send_event/2]).
+-export([loop/2, em_init/1]).
 
 % 5.1
 
@@ -132,4 +136,101 @@ freq_handle({deallocate, Pid, Freq}, {Free, Allocated}) ->
     case lists:member({Freq,Pid}, Allocated) of
         true -> {ok, {[Freq|Free], lists:delete({Freq,Pid}, Allocated)}};
         false -> {{error, bad_frequency}, {Free, Allocated}}
+    end.
+
+
+% 5.3 - Event Manager (with edits)
+
+em_start(Name, HandlerList) ->
+    register(Name, spawn(ch5, em_init, [HandlerList])),
+    ok.
+
+em_init(HandlerList) ->
+    em_loop(em_initialize(HandlerList)).
+
+em_initialize([]) ->
+    [];
+em_initialize([{Handler, InitData}|Rest]) ->
+    [{Handler, Handler:init(InitData)} | em_initialize(Rest)].
+
+em_stop(Name) ->
+    Name ! {stop, self()},
+    receive 
+        {reply, Reply} -> Reply 
+    end.
+
+em_terminate([]) ->
+    [];
+em_terminate([{Handler, Data} | Rest]) ->
+    [{Handler, Handler:terminate(Data)} | em_terminate(Rest)].
+
+em_add_handler(Name, Handler, InitData) ->
+    em_call(Name, {add_handler, Handler, InitData}).
+
+em_delete_handler(Name, Handler) ->
+    em_call(Name, {delete_handler, Handler}).
+
+em_swap_handlers(Name, OldHandler, NewHandler) ->
+    em_call(Name, {swap_handlers, OldHandler, NewHandler}).
+
+em_get_data(Name, Handler) ->
+    em_call(Name, {get_data, Handler}).
+
+em_send_event(Name, Event) ->
+    em_call(Name, {send_event, Event}).
+
+
+em_handle_msg({add_handler, Handler, InitData}, LoopData) ->
+    {ok, [{Handler, Handler:init(InitData)} | LoopData]};
+
+em_handle_msg({delete_handler, Handler}, LoopData) ->
+    case lists:keyfind(Handler, 1, LoopData) of
+        false ->
+            {{error, instance}, LoopData};
+        {Handler, HandlerData} ->
+            Reply = {data, Handler:terminate(HandlerData)},
+            {Reply, lists:keydelete(Handler, 1, LoopData)}
+    end;
+
+em_handle_msg({swap_handlers, OldHandler, NewHandler}, LoopData) ->
+    case lists:keyfind(OldHandler, 1, LoopData) of
+        false ->
+            {{error, instance}, LoopData};
+        {OldHandler, Data} ->
+            NewData = NewHandler:init(OldHandler:terminate(Data)),
+            NewLoopData = lists:keydelete(OldHandler, 1, LoopData),
+            {ok, [{NewHandler, NewData} | NewLoopData]}
+    end;
+
+em_handle_msg({get_data, Handler}, LoopData) ->
+    case lists:keyfind(Handler, 1, LoopData) of
+        false ->
+            {{error, instance}, LoopData};
+        {Handler, HandlerData} ->
+            {{data, HandlerData}, LoopData}
+    end;
+
+em_handle_msg({send_event, Event}, LoopData) ->
+    {ok, em_event(Event, LoopData)}.
+
+em_event(_Event, []) ->
+    [];
+em_event(Event, [{Handler, Data} | Rest]) ->
+    [{Handler, Handler:handle_event(Event, Data)} | em_event(Event, Rest)].
+
+em_call(Name, Msg) ->
+    Name ! {request, self(), Msg},
+    receive {reply, Reply} -> Reply end.
+
+em_reply(To, Msg) ->
+    To ! {reply, Msg}.
+
+em_loop(State) ->
+    receive
+        {request, From, Msg} ->
+            {Reply, NewState} = em_handle_msg(Msg, State),
+            em_reply(From, Reply),
+            em_loop(NewState);
+        {stop, From} ->
+            em_reply(From, em_terminate(State))
     end.
