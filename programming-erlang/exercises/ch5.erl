@@ -6,9 +6,9 @@
          em_swap_handlers/3, em_get_data/2, em_send_event/2]).
 -export([loop/2, em_init/1]).
 
-% 5.1
+%%% 5.1
 
-% Process skeleton
+%%% Process skeleton
 
      
 loop(Handler, State) ->
@@ -40,7 +40,7 @@ debug(Name) ->
     receive {reply, Reply} -> Reply end.
              
 
-% my_db client
+%%% my_db client
 
 my_db_start() ->
     InitialDb = ch3:db2_new(),
@@ -69,7 +69,7 @@ my_db_match(Element) ->
     request(my_db, {match, Element}).
 
 
-% my_db server
+%%% my_db server
 
 my_db_handle(fetch, Db) ->
     {Db, Db};
@@ -89,9 +89,9 @@ my_db_handle({match, Element}, Db) ->
 
 
 
-% 5.2
+%%% 5.2
 
-% frequencies client
+%%% frequencies client
 
 freq_start() ->
     Frequencies = {[10,11,12,13,14,15],[]},
@@ -111,7 +111,7 @@ freq_deallocate(Freq) ->
     request(frequency, {deallocate, self(), Freq}).
 
 
-% frequencies server
+%%% frequencies server
 
 freq_handle({stop, _Pid}, {Free, []}) ->
     self() ! {stop, self()},
@@ -139,7 +139,7 @@ freq_handle({deallocate, Pid, Freq}, {Free, Allocated}) ->
     end.
 
 
-% 5.3 - Event Manager (with edits)
+%%% 5.3 - Event Manager (with edits)
 
 em_start(Name, HandlerList) ->
     register(Name, spawn(ch5, em_init, [HandlerList])),
@@ -234,3 +234,7 @@ em_loop(State) ->
         {stop, From} ->
             em_reply(From, em_terminate(State))
     end.
+
+
+%%% For exercise 5.4, see ch5_stats_handler
+
